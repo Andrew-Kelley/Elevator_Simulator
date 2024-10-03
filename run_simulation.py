@@ -1,7 +1,9 @@
+from os import walk, path
 from collections import deque
 import json
+
 from request import Request
-from elevator import Elevator, VisibleState
+from elevator import Elevator
 from constants import UP, DOWN
 
 class Event:
@@ -18,54 +20,65 @@ class Event:
         self.time = time
 
     def __repr__(self):
-        return f'For time {self.time}, reques: ' + self.request.__repr__()
+        return f'For time {self.time}, request: ' + self.request.__repr__()
 
 
 class Simulation:
-    def __init__(self, elevator):
+    def __init__(self, elevator, debug_mode=False):
         self.event_queue = deque()
-        self.current_time = 0  # basically the "turn number"/"clock tick" this simulation is on
         # I'm not totally happy with putting current_time in this class
         # self.command_queue = deque()  # this includes commands from the future (i.e. a later clock tick)
         self.elevator = elevator
         self.simulate_for_time = 0
+        self.debug_mode = debug_mode
 
     def run_sim(self):
-        """return a list of strings representing the transcript"""
-        while self.event_queue:
-            event = self.event_queue.popleft()
-            self.simulate_for_time = event.time  # overwritten repeatedly (intentionally)
-            self.elevator.add_passenger_request(event.request)
-
-        self.simulate_for_time += 3*self.elevator.num_floors  # in case you have to go to the top floor
-
+        """return a list of VisibleState instances representing the transcript"""
+        visible_states = []
+        time_for_simulation = self.calc_time_to_simulate_for()  # a bound on the number of clock ticks
         clock_tick = self.elevator.advance_time_and_return_visible_state
-        visible_states = [clock_tick() for _ in range(self.simulate_for_time)]
+        event = self.event_queue.popleft()
+        for current_time in range(time_for_simulation):
+            # current_time is the "turn number"/"clock tick" this simulation is on
+            while event is not None and event.time == current_time:
+                self.elevator.add_passenger_request(event.request)
+                if self.event_queue:
+                    event = self.event_queue.popleft()
+                else:
+                    event = None
 
-        # not implemented: write to file instead
-        for state in visible_states:
-            print(state)
+            state = clock_tick()
+            visible_states.append(state)
+            if self.debug_mode:
+                print(f"Time {current_time}, {state}")
+
+            if event is None and state.action == 'waiting':
+                # then there is nothing left to simulate
+                break
+
         return visible_states
+
+    def calc_time_to_simulate_for(self):
+        last_event = self.event_queue[-1]
+        return last_event.time + 3*self.elevator.num_floors + 10
 
 
     def add_events_to_queue(self, events):
         """events must be inserted in order (with respect to time)"""
+        time = 0
         for event in events:
             request = event.request
             assert 0 <= request.this_floor
             assert request.this_floor < self.elevator.num_floors
 
-            # the events should lbe inserted in order
-            assert self.current_time <= event.time
-            if self.event_queue:
-                assert self.event_queue[-1].time <= event.time
-
+            # the events should be inserted in order
+            assert time <= event.time
+            time = event.time
             self.event_queue.append(event)
 
 
 def load_from_file(file_name):
     """Return a list of Events as specified in file_name"""
-    print(file_name)
     with open(file_name) as f:
         info_from_file = json.load(f)
 
@@ -90,21 +103,19 @@ def write_transcript(file_name, transcript):
     pass  # not implemented
 
 
-def main(file_name):
+def main(file_name, debug_mode=False):
     setup_info = load_from_file(file_name)
+    if debug_mode:
+        print(setup_info)
     elevator = Elevator(setup_info['num_floors'], setup_info['floor_names'])
-    sim = Simulation(elevator)
+    sim = Simulation(elevator, debug_mode)
     sim.add_events_to_queue(setup_info['events'])
     return sim.run_sim()
 
 
 def test_not_stationary():
     file_name = './example_input/example4.json'
-    setup_info = load_from_file(file_name)
-    elevator = Elevator(setup_info['num_floors'], setup_info['floor_names'])
-    sim = Simulation(elevator)
-    sim.add_events_to_queue(setup_info['events'])
-    states = sim.run_sim()
+    states = main(file_name)
 
     last_state = states[-1]
     count_equal = 0
@@ -115,9 +126,28 @@ def test_not_stationary():
     assert count_equal < 10
 
 
-if __name__ == '__main__':
-    file_name = './example_input/example4.json'
-    main(file_name)
+def test_event_insertion():
+    """Check that events are not added all at once"""
+    file_name = './example_input/example5.json'
+    states = main(file_name)
+    assert len(states) > 15  # this ensures that the second event happens after the first one
 
-    # the following is the only test I kept, normally I strongly prefer to write more tests:
-    # test_not_stationary()
+
+def run_all_examples():
+    rel_path = './example_input'
+    for (dirpath, dirnames, filenames) in walk(rel_path):
+        for file in filenames:
+            if '.json' in file:
+                print('using file', file)
+                main(path.join(rel_path, file), debug_mode=True)
+
+
+if __name__ == '__main__':
+    test_not_stationary()
+    test_event_insertion()
+    print('all tests pass')
+
+    file_name = './example_input/example5.json'
+    main(file_name, debug_mode=True)
+
+    # run_all_examples()
