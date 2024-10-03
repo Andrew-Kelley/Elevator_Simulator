@@ -133,6 +133,26 @@ def test_event_insertion():
     assert len(states) > 15  # this ensures that the second event happens after the first one
 
 
+def test_stop_at_each_floor():
+    """Check that the elevator only changes direction once"""
+    file_name = './example_input/example6.json'
+    states = main(file_name, debug_mode=False)
+
+    floors_going_up = []
+    max_floor = 0
+    for clock_tick in range(len(states) - 1):
+        next_floor = states[clock_tick].floor
+        if next_floor >= max_floor:
+            max_floor = next_floor
+            floors_going_up.append(next_floor)
+        else:
+            # the current clock_tick is where it starts going down
+            break
+    index_starting_down = clock_tick
+    for n in range(index_starting_down, len(states) - 1):
+        assert states[n].floor >= states[n+1].floor
+
+
 def run_all_examples():
     rel_path = './example_input'
     for (dirpath, dirnames, filenames) in walk(rel_path):
@@ -145,9 +165,10 @@ def run_all_examples():
 if __name__ == '__main__':
     test_not_stationary()
     test_event_insertion()
+    test_stop_at_each_floor()
     print('all tests pass')
 
     file_name = './example_input/example5.json'
-    main(file_name, debug_mode=True)
+    # main(file_name, debug_mode=True)
 
     # run_all_examples()
