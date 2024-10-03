@@ -1,9 +1,8 @@
-
-
 # constants instead of an enum to use as an index
 UP = 0
 DOWN = 1
 
+DIRECTION_TO_STR = {UP: 'up', DOWN: 'down'}
 
 # (Mostly-serious comment) - Having lots of floors requires special design considerations
 # (for efficiency) that I am assuming is out of scope of this simulation. The limit below
