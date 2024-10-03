@@ -1,4 +1,4 @@
-from constants import UP, DOWN
+from constants import UP, DOWN, DIRECTION_TO_STR
 
 
 class Request:
@@ -29,4 +29,5 @@ class Request:
         self.where_to = where_to
 
     def __repr__(self):
-        return f"on floor {self.this_floor}, direction {self.direction}, where_to {self.where_to}"
+        direction = DIRECTION_TO_STR[self.direction]
+        return f"on floor {self.this_floor}, direction {direction}, where_to {self.where_to}"
