@@ -40,7 +40,7 @@ class Elevator:
         assert 2 <= num_floors,  'there is no point in having an elevator with fewer than 2 floors'
         assert num_floors <= MAX_NUM_FLOORS, f"num_floors: {num_floors}, exceeds bound: {MAX_NUM_FLOORS}"
         self.num_floors = num_floors
-        self.doors_opened = False
+        # self.doors_opened = False
 
         self.floor_names = list(floor_names)
         assert len(self.floor_names)
@@ -58,15 +58,17 @@ class Elevator:
         # This class assumes that the elevator can move up or down one floor per clock tick:
 
     def advance_time_and_return_visible_state(self):
+        floor_at_start = self.floor_names[self.current_floor]
         if self.should_open_doors():
             self.open_doors()
-            action = 'opened doors'
+            action = 'opening doors'
 
         else:
-            self.doors_opened = False
+            # self.doors_opened = False
             action = self.move_elevator_if_needed()
 
-        return VisibleState(floor=self.floor_names[self.current_floor], action=action)
+        state = VisibleState(floor=floor_at_start, action=action)
+        return state
 
     def add_passenger_request(self, request):
         """Push an up or down button outside elevator and record what such a passenger then wants to do"""
@@ -89,32 +91,28 @@ class Elevator:
 
     def open_doors(self):
         """Let anyone in or out and possibly change the state"""
-        self.doors_opened = True
+        # self.doors_opened = True
         self.passenger_drop_off_at_floor[self.current_floor] = False  # we just dropped them off (if needed)
-
         # Assume people only enter the elevator if it's going the right direction (or if the elevator is waiting)
-        if self.state == State.GOING_UP:
-            self.let_passengers_in(direction=UP)
-        elif self.state == State.GOING_DOWN:
-            self.let_passengers_in(direction=DOWN)
-        else:
-            assert self.state == State.WAITING
-            # todo: be sure to test this
-            people_waiting = self.people_waiting_here()
-            if people_waiting:
-                direction = people_waiting[0].direction
-                self.let_passengers_in(direction)
-                if direction == UP:
-                    self.state = State.GOING_UP
-                elif direction == DOWN:
-                    self.state = State.GOING_DOWN
-                else:
-                    raise ValueError(f'Invalid direction: {direction}')
+        self.let_passengers_in()
 
     def should_open_doors(self):
-        if self.doors_opened:
-            return False
-        return self.people_are_waiting_here() or self.must_drop_someone_off_here()
+        # if self.doors_opened:
+        #     return False
+        if self.must_drop_someone_off_here():
+            return True
+        if self.state == State.GOING_UP:
+            if self.people_are_waiting_here_to_go(UP):
+                return True
+            elif not self.need_to_go_up():
+                return self.people_are_waiting_here_to_go(DOWN)
+        elif self.state == State.GOING_DOWN:
+            if self.people_are_waiting_here_to_go(DOWN):
+                return True
+            elif not self.need_to_go_down():
+                return self.people_are_waiting_here_to_go(UP)
+        else:
+            return self.people_are_waiting_here()
 
     def people_are_waiting_above(self):
         """Return True if there are people on a higher floor waiting to be picked up"""
@@ -131,20 +129,13 @@ class Elevator:
         return waiting_to_go_up or waiting_to_go_down
 
     def people_are_waiting_here(self):
-        """Someone outside the elevator is waiting (on this floor) to get in"""
-        return len(self.people_waiting_here()) > 0
+        return self.people_waiting_here_to_go(UP) or self.people_are_waiting_here_to_go(DOWN)
 
-    def people_waiting_here(self):
-        """Return the people wanting to go up if any, else the people wanting to go down, else []"""
-        floor = self.current_floor
-        requests_to_go_up = self.updown_buttons_outside[floor][UP]
-        if requests_to_go_up:
-            # people going up have first dibs
-            return requests_to_go_up
-        request_to_go_down = self.updown_buttons_outside[floor][DOWN]
-        if request_to_go_down:
-            return request_to_go_down
-        return []
+    def people_are_waiting_here_to_go(self, direction):
+        return len(self.people_waiting_here_to_go(direction)) > 0
+
+    def people_waiting_here_to_go(self, direction):
+        return self.updown_buttons_outside[self.current_floor][direction]
 
     def need_to_go_up(self):
         return self.must_drop_someone_off_above() or self.people_are_waiting_above()
@@ -152,22 +143,44 @@ class Elevator:
     def need_to_go_down(self):
         return self.must_drop_someone_off_below() or self.people_are_waiting_below()
 
-    def let_passengers_in(self, direction):
-        """push the buttons inside elevator (which floors to go to)"""
+    def let_passengers_in_going(self, direction):
+        # we are assuming infinite capacity of the elevator
         for request in self.updown_buttons_outside[self.current_floor][direction]:
             self.passenger_drop_off_at_floor[request.where_to] = True
-        # all requests for going up have been processed (since we assume infinite capacity)
         self.updown_buttons_outside[self.current_floor][direction] = []
+
+    def let_passengers_in(self):
+        """push the buttons inside elevator (which floors to go to)"""
+        if self.state == State.GOING_UP or self.state == State.WAITING:
+            self.let_passengers_in_going(UP)
+            if self.need_to_go_up():
+                self.state = State.GOING_UP
+            else:
+                # in particular, no one entered
+                self.let_passengers_in_going(DOWN)
+                if self.need_to_go_down():
+                    self.state = State.GOING_DOWN
+                else:
+                    self.state = State.WAITING
+        else:
+            self.let_passengers_in_going(DOWN)  # no need to change state
+            if not self.need_to_go_down():
+                # in particular, no one entered
+                self.let_passengers_in_going(UP)
+                if self.need_to_go_up():
+                    self.state = State.GOING_UP
+                else:
+                    self.state = State.WAITING
 
     def go_up_one_floor(self):
         self.current_floor += 1
         assert self.current_floor < self.num_floors
-        return 'was going up'
+        return 'going up'
 
     def go_down_one_floor(self):
         self.current_floor -= 1
         assert self.current_floor >= 0
-        return 'was going down'
+        return 'going down'
 
     def move_elevator_if_needed(self):
         """If needed, move elevator up or down, and if needed, change the state
