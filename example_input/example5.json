@@ -1,0 +1,4 @@
+{"num_floors": 7, "floor_names": [0, 1, 2, 3, 4, 5, 6], 
+"events": [{"time": 0, "this_floor":0, "where_to": 4},
+{"time": 8, "this_floor":0, "where_to": 4}]
+}
